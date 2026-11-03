@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import React, { useEffect } from 'react';
 
 interface ReferralTrackerProps {
@@ -38,7 +39,7 @@ export const ReferralTracker: React.FC<ReferralTrackerProps> = ({ currentUser })
       if (!storedRef) return;
 
       try {
-        const res = await fetch('/api/affiliate/attribution', {
+        const res = await authenticatedFetch('/api/affiliate/attribution', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
