@@ -1513,6 +1513,18 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
   try {
     const { username, recipientId, amountInDollars, supporterName, message, goalId } = req.body;
 
+    // Never allow the caller to redirect a tip by supplying another creator's UID.
+    const normalizedRecipient = normalizeUsername(String(username || ''));
+    if (!recipientId || !normalizedRecipient) {
+      res.status(400).json({ error: 'A valid recipient is required' });
+      return;
+    }
+    const recipientSnap = await getDoc(doc(db, 'users', recipientId));
+    if (!recipientSnap.exists() || normalizeUsername(recipientSnap.data().username || '') !== normalizedRecipient) {
+      res.status(400).json({ error: 'Recipient profile does not match the requested tip link' });
+      return;
+    }
+
     const amount = Number(amountInDollars);
     const validation = validateTipAmount(amount);
     if (!validation.valid) {
