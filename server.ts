@@ -335,16 +335,16 @@ app.post(
                 console.log(`[Stripe Webhook] Marked tip document ${tipDoc.id} as refunded.`);
               }
 
-              // 2. Reverse associated affiliate commission ledger entries
-              const ledgerQuery = query(collection(db, 'commissionLedger'), where('sourceTipId', '==', paymentIntentId));
-              const ledgerSnap = await getDocs(ledgerQuery);
-
-              for (const docSnap of ledgerSnap.docs) {
-                await updateDoc(docSnap.ref, {
-                  state: 'reversed',
-                  updatedAt: Date.now(),
-                });
-                console.log(`[Affiliate Commission Reversal] Reversed commission entry ${docSnap.id} due to charge refund.`);
+              // 2. Reverse commissions for the refunded tips, keyed by tip ID.
+              for (const tipDoc of tipsSnap.docs) {
+                const ledgerRef = doc(db, 'commissionLedger', `comm_${tipDoc.id}`);
+                const ledgerSnap = await getDoc(ledgerRef);
+                if (ledgerSnap.exists()) {
+                  await updateDoc(ledgerRef, {
+                    state: 'reversed',
+                    updatedAt: Date.now(),
+                  });
+                }
               }
             } catch (refErr) {
               console.error('[Stripe Webhook] Error reversing commission and updating tip on refund:', refErr);
@@ -1576,7 +1576,8 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
         return;
       }
     } else {
-      session = await stripe.checkout.sessions.create(sessionParams);
+      res.status(400).json({ error: 'Creator payouts are not connected. Direct charges require an active connected Stripe account.', code: 'connected_account_required' });
+      return;
     }
 
     res.json({ url: session.url, tipId, platformFeeCents: platformFeeAmount });
@@ -1872,6 +1873,11 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
 app.get('/api/admin/affiliates', async (req: Request, res: Response) => {
   try {
     const adminKey = req.headers['x-admin-key'];
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey || typeof adminKey !== 'string' || adminKey !== expectedKey) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
     const profilesSnap = await getDocs(collection(db, 'affiliateProfiles'));
     const profiles: any[] = [];
     profilesSnap.forEach((d) => profiles.push(d.data()));
@@ -1919,7 +1925,7 @@ app.get('/api/admin/affiliates', async (req: Request, res: Response) => {
 app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Response) => {
   try {
     const { adminKey } = req.body;
-    const expectedKey = process.env.ADMIN_KEY || 'tipzeme_admin_secret';
+    const expectedKey = process.env.ADMIN_KEY;
     if (!adminKey || adminKey !== expectedKey) {
       res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
       return;
@@ -1985,7 +1991,7 @@ app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Respo
 app.post('/api/admin/affiliates/batch/approve', async (req: Request, res: Response) => {
   try {
     const { batchId, adminKey, adminId } = req.body;
-    const expectedKey = process.env.ADMIN_KEY || 'tipzeme_admin_secret';
+    const expectedKey = process.env.ADMIN_KEY;
     if (!adminKey || adminKey !== expectedKey) {
       res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
       return;
