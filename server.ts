@@ -5,6 +5,8 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
+import { initializeApp as initializeAdminApp, getApps as getAdminApps, applicationDefault } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getFirestore,
@@ -35,6 +37,29 @@ import { TipTransaction } from './src/types';
 import { cleanFirestorePayload } from './src/lib/firestoreUtils';
 
 dotenv.config();
+
+// Firebase Admin verifies signed Firebase ID tokens using server-side credentials.
+// Cloud Run should supply Application Default Credentials to this service.
+if (!getAdminApps().length) {
+  initializeAdminApp({ credential: applicationDefault() });
+}
+
+async function requireFirebaseUid(req: Request, res: Response): Promise<string | null> {
+  const authorization = req.headers.authorization || '';
+  const match = /^Bearer (\S+)$/.exec(authorization);
+  if (!match) {
+    res.status(401).json({ error: 'Firebase sign-in required' });
+    return null;
+  }
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(match[1], true);
+    return decoded.uid;
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired Firebase authentication token' });
+    return null;
+  }
+}
+
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -663,7 +688,6 @@ app.get('/api/username/check', async (req: Request, res: Response) => {
 // Change username endpoint (with server-side token/session authentication, atomic runTransaction, and loop prevention)
 app.post('/api/username/change', async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
     const { userId, newUsername } = req.body;
 
     if (!newUsername) {
@@ -671,17 +695,11 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
       return;
     }
 
-    // 1. Authenticate caller: Verify Bearer token or validated session header
-    let authenticatedUid = userId;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split('Bearer ')[1];
-      if (token.startsWith('demo-token-')) {
-        authenticatedUid = token.replace('demo-token-', '');
-      }
-    }
-
-    if (!authenticatedUid || (userId && userId !== authenticatedUid)) {
-      res.status(401).json({ error: 'Unauthorized: Missing or invalid authentication token' });
+    // Verify the signed Firebase ID token; never trust a client-supplied UID.
+    const authenticatedUid = await requireFirebaseUid(req, res);
+    if (!authenticatedUid) return;
+    if (userId && userId !== authenticatedUid) {
+      res.status(403).json({ error: 'Cannot change another user’s username' });
       return;
     }
 
