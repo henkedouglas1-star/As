@@ -1,0 +1,33 @@
+# TipZeMe robots.txt
+User-agent: *
+Allow: /
+Allow: /images/
+Allow: /images/tipzeme-social-preview.jpg
+Allow: /images/tipzeme-social-preview.webp
+Allow: /images/tipzeme-affiliate-og.png
+Allow: /images/tipzeme-affiliate-og.jpg
+
+# Crawlers
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: Pinterest
+Allow: /
+
+User-agent: Slackbot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+# Sitemap
+Sitemap: https://tipzeme.ai.studio/sitemap.xml

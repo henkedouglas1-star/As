@@ -1,0 +1,6 @@
+{
+  "name": "TipJar",
+  "description": "Create your tip jar. Share your link. Get supported directly with debit, credit, Apple Pay, and Google Pay.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

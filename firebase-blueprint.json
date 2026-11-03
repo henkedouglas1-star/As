@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile for tip jar owners containing public display info, settings, and payout status.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "username": { "type": "string", "maxLength": 30, "pattern": "^[a-z0-9_-]{3,30}$", "description": "Unique URL handle." },
+        "displayName": { "type": "string", "maxLength": 60, "description": "Public display name." },
+        "email": { "type": "string", "maxLength": 100, "description": "Account email address." },
+        "bio": { "type": "string", "maxLength": 280, "description": "Creator description / bio." },
+        "supportMessage": { "type": "string", "maxLength": 160, "description": "Appreciation callout message." },
+        "avatarUrl": { "type": "string", "maxLength": 500, "description": "Optional profile photo URL or data URI." },
+        "stripeAccountId": { "type": "string", "maxLength": 100, "description": "Connected Stripe Express Account ID." },
+        "chargesEnabled": { "type": "boolean", "description": "Whether the creator is eligible to accept real tips." },
+        "activeGoal": {
+          "type": "object",
+          "description": "Optional fundraising goal."
+        },
+        "referredBy": { "type": "string", "maxLength": 50, "description": "Username of referring creator if applicable." },
+        "createdAt": { "type": "number", "description": "Epoch timestamp in milliseconds." }
+      },
+      "required": ["uid", "username", "displayName", "email", "chargesEnabled", "createdAt"]
+    },
+    "UsernameReservation": {
+      "title": "UsernameReservation",
+      "description": "Permanent registry ensuring global uniqueness of claimed tip jar handles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner user UID." },
+        "createdAt": { "type": "number", "description": "Timestamp of handle reservation." }
+      },
+      "required": ["uid", "createdAt"]
+    },
+    "Tip": {
+      "title": "Tip",
+      "description": "Tip transaction recorded for a creator.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100, "description": "Transaction identifier." },
+        "recipientId": { "type": "string", "maxLength": 128, "description": "UID of the creator receiving the tip." },
+        "recipientUsername": { "type": "string", "maxLength": 30, "description": "Handle of the recipient." },
+        "amountCents": { "type": "number", "description": "Amount in cents ($1-$500 USD, 100-50000)." },
+        "currency": { "type": "string", "maxLength": 10, "description": "Currency code (default usd)." },
+        "supporterName": { "type": "string", "maxLength": 60, "description": "Name provided by supporter or Anonymous." },
+        "message": { "type": "string", "maxLength": 300, "description": "Optional message from supporter." },
+        "status": { "type": "string", "enum": ["pending", "succeeded", "failed", "refunded"], "description": "Settlement status." },
+        "stripeCheckoutSessionId": { "type": "string", "maxLength": 200, "description": "Stripe Checkout session ID." },
+        "stripePaymentIntentId": { "type": "string", "maxLength": 200, "description": "Stripe Payment Intent ID." },
+        "goalId": { "type": "string", "maxLength": 100, "description": "Associated goal ID if contributed towards a goal." },
+        "referralSource": { "type": "string", "maxLength": 50, "description": "Attributed referral creator handle." },
+        "createdAt": { "type": "number", "description": "Creation timestamp in milliseconds." }
+      },
+      "required": ["id", "recipientId", "recipientUsername", "amountCents", "currency", "status", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "User abuse/safety report for inappropriate tip jars.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique report ID." },
+        "username": { "type": "string", "maxLength": 30, "description": "Reported handle." },
+        "reason": { "type": "string", "maxLength": 100, "description": "Report category/reason." },
+        "details": { "type": "string", "maxLength": 500, "description": "Additional context." },
+        "createdAt": { "type": "number", "description": "Timestamp of the report." }
+      },
+      "required": ["id", "username", "reason", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles for tip jar owners."
+    },
+    "/usernames/{username}": {
+      "schema": "UsernameReservation",
+      "description": "Unique username registry."
+    },
+    "/tips/{tipId}": {
+      "schema": "Tip",
+      "description": "Verified tips and contributions."
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Abuse and moderation reports."
+    }
+  }
+}

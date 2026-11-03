@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default allow read/write or secure matching
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // --- Username Registry ---
+    match /usernames/{username} {
+      allow get: if isValidId(username);
+      allow list: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    // --- Tips Collection ---
+    match /tips/{tipId} {
+      allow get: if isValidId(tipId);
+      allow list: if true;
+      allow create: if isValidId(tipId);
+      allow update: if isValidId(tipId);
+      allow delete: if false;
+    }
+
+    // --- Reports Collection ---
+    match /reports/{reportId} {
+      allow create: if isValidId(reportId);
+      allow read, update, delete: if true;
+    }
+
+    // --- Affiliate Collections ---
+    match /affiliateProfiles/{userId} {
+      allow read, write: if true;
+    }
+
+    match /referralAttributions/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /referralActivations/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /commissionLedger/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /payoutBatches/{documentId} {
+      allow read, write: if true;
+    }
+  }
+}

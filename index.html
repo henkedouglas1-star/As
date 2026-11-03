@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TipZeMe" />
+    <!-- Google AI Studio Preview & Vite HMR WebSocket Guard -->
+    <script>
+      (function() {
+        // Platform Runtime Constraint: "HMR: Disabled. Ignore WebSocket errors."
+        // Cloud Run proxies do not support Vite HMR WebSocket upgrades.
+        // Prevent uncaught promise rejections from @vite/client line 236: "WebSocket closed without opened."
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          var msg = (reason && (reason.message || String(reason))) || '';
+          if (
+            msg.includes('WebSocket') ||
+            msg.includes('vite') ||
+            msg.includes('closed without opened')
+          ) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          var msg = event.message || '';
+          var filename = event.filename || '';
+          if (
+            filename.includes('@vite/client') ||
+            msg.includes('WebSocket') ||
+            msg.includes('vite')
+          ) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        // Guard window.WebSocket for vite-hmr and vite-ping on remote proxy domains (*.run.app, ai.studio)
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var OriginalWebSocket = window.WebSocket;
+          window.WebSocket = function(url, protocols) {
+            var isViteHmr =
+              (protocols === 'vite-hmr' || protocols === 'vite-ping') ||
+              (Array.isArray(protocols) && (protocols.includes('vite-hmr') || protocols.includes('vite-ping'))) ||
+              (typeof url === 'string' && (url.includes('token=') && url.includes('vite')));
+
+            var isCloudRunOrRemote =
+              window.location.hostname.includes('.run.app') ||
+              window.location.hostname.includes('ai.studio') ||
+              window.location.hostname.includes('googleusercontent.com');
+
+            if (isViteHmr && isCloudRunOrRemote) {
+              var dummy = new EventTarget();
+              dummy.url = url;
+              dummy.protocol = Array.isArray(protocols) ? protocols[0] : (protocols || '');
+              dummy.readyState = OriginalWebSocket.CONNECTING;
+              dummy.bufferedAmount = 0;
+              dummy.binaryType = 'blob';
+              dummy.send = function() {};
+              dummy.close = function() {
+                dummy.readyState = OriginalWebSocket.CLOSED;
+              };
+
+              // Resolve cleanly so @vite/client never rejects with line 236 error
+              setTimeout(function() {
+                dummy.readyState = OriginalWebSocket.OPEN;
+                var openEvent = new Event('open');
+                if (typeof dummy.onopen === 'function') dummy.onopen(openEvent);
+                dummy.dispatchEvent(openEvent);
+              }, 10);
+
+              return dummy;
+            }
+
+            try {
+              return new OriginalWebSocket(url, protocols);
+            } catch (err) {
+              var fallback = new EventTarget();
+              fallback.readyState = OriginalWebSocket.CLOSED;
+              fallback.send = function() {};
+              fallback.close = function() {};
+              return fallback;
+            }
+          };
+
+          window.WebSocket.prototype = OriginalWebSocket.prototype;
+          window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+          window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+          window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+          window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+        }
+      })();
+    </script>
+    <title>TipZeMe | Good Vibes. Great Tips.</title>
+    <meta name="description" content="Create your personal tipping link. Share it anywhere. Make it easy for people to show appreciation." />
+    <link rel="canonical" href="https://tipzeme.ai.studio/" />
+
+    <!-- Open Graph / Facebook / LinkedIn / Threads -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TipZeMe" />
+    <meta property="og:title" content="TipZeMe | Good Vibes. Great Tips." />
+    <meta property="og:description" content="Create your personal tipping link. Share it anywhere. Make it easy for people to show appreciation." />
+    <meta property="og:url" content="https://tipzeme.ai.studio/" />
+    <meta property="og:image" content="https://tipzeme.ai.studio/images/tipzeme-social-preview.jpg" />
+    <meta property="og:image:secure_url" content="https://tipzeme.ai.studio/images/tipzeme-social-preview.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="TipZeMe digital tipping platform with a personal tipping page, QR code, and vibrant purple artwork." />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TipZeMe | Good Vibes. Great Tips." />
+    <meta name="twitter:description" content="Create your personal tipping link and make every thank-you count." />
+    <meta name="twitter:image" content="https://tipzeme.ai.studio/images/tipzeme-social-preview.jpg" />
+    <meta name="twitter:image:alt" content="TipZeMe digital tipping platform with a personal tipping page, QR code, and vibrant purple artwork." />
+
+    <!-- Schema.org Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "TipZeMe",
+      "url": "https://tipzeme.ai.studio/",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "All",
+      "description": "Create your personal tipping link. Share it anywhere. Make it easy for people to show appreciation.",
+      "image": "https://tipzeme.ai.studio/images/tipzeme-social-preview.jpg",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+    <meta name="theme-color" content="#7928FF" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.fontshare.com">
+    <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-[#FFFFFF] text-[#17131D] antialiased selection:bg-[#7427DF] selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
