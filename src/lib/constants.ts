@@ -42,7 +42,7 @@ export const RESERVED_USERNAMES = new Set([
 
 export const PRESET_AMOUNTS = [3, 5, 10, 25];
 
-export const MIN_TIP_DOLLARS = 1;
+export const MIN_TIP_DOLLARS = 3;
 export const MAX_TIP_DOLLARS = 500;
 
 export const DEFAULT_SUPPORT_MESSAGE = 'Good vibes deserve good tips! Leave a little love.';
