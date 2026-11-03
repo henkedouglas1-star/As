@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
@@ -105,21 +106,21 @@ export default function EarningsPayoutsPage({ onNavigate }: EarningsPayoutsPageP
       }
 
       // 1. Account status
-      const statusRes = await fetch(`/api/stripe/account-status?userId=${user.uid}`);
+      const statusRes = await authenticatedFetch(`/api/stripe/account-status?userId=${user.uid}`);
       if (statusRes.ok) {
         const statusData = await statusRes.json();
         setAccountStatus(statusData);
       }
 
       // 2. Stripe Balance
-      const balanceRes = await fetch(`/api/stripe/balance?userId=${user.uid}`);
+      const balanceRes = await authenticatedFetch(`/api/stripe/balance?userId=${user.uid}`);
       if (balanceRes.ok) {
         const balanceData = await balanceRes.json();
         setBalance(balanceData);
       }
 
       // 3. Payouts List
-      const payoutsRes = await fetch(`/api/stripe/payouts?userId=${user.uid}`);
+      const payoutsRes = await authenticatedFetch(`/api/stripe/payouts?userId=${user.uid}`);
       if (payoutsRes.ok) {
         const payoutsData = await payoutsRes.json();
         setPayouts(payoutsData.payouts || []);
@@ -145,7 +146,7 @@ export default function EarningsPayoutsPage({ onNavigate }: EarningsPayoutsPageP
       // Trigger status refresh
       if (user) {
         loadStripeData().then(() => {
-          fetch(`/api/stripe/account-status?userId=${user.uid}`)
+          authenticatedFetch(`/api/stripe/account-status?userId=${user.uid}`)
             .then((r) => r.json())
             .then((status) => {
               if (status.payoutsEnabled) {
@@ -289,7 +290,7 @@ export default function EarningsPayoutsPage({ onNavigate }: EarningsPayoutsPageP
     setDiagLastException(null);
 
     try {
-      const res = await fetch('/api/stripe/connect', {
+      const res = await authenticatedFetch('/api/stripe/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -399,7 +400,7 @@ export default function EarningsPayoutsPage({ onNavigate }: EarningsPayoutsPageP
     setDiagStep('opening_express_dashboard');
 
     try {
-      const res = await fetch('/api/stripe/dashboard-link', {
+      const res = await authenticatedFetch('/api/stripe/dashboard-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.uid }),
