@@ -521,6 +521,30 @@ app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
+// Require signed Firebase identity and ownership for private creator endpoints.
+const privateRoutes = new Set([
+  '/api/profile/save-avatar', '/api/profile/avatar', '/api/stripe/connect',
+  '/api/stripe/account-status', '/api/stripe/dashboard-link', '/api/stripe/balance',
+  '/api/stripe/payouts', '/api/affiliate/enroll', '/api/affiliate/profile',
+  '/api/affiliate/attribution', '/api/stripe/verify-transaction',
+]);
+app.use(async (req: Request, res: Response, next) => {
+  if (!privateRoutes.has(req.path)) return next();
+  const uid = await requireFirebaseUid(req, res);
+  if (!uid) return;
+  const suppliedId = req.path === '/api/affiliate/attribution'
+    ? req.body?.referredUserId
+    : (req.method === 'GET' ? req.query.userId : req.body?.userId);
+  if (suppliedId && suppliedId !== uid) {
+    res.status(403).json({ error: 'Cannot access another creator account' });
+    return;
+  }
+  if (req.method === 'GET') req.query.userId = uid;
+  else if (req.path === '/api/affiliate/attribution') req.body.referredUserId = uid;
+  else req.body.userId = uid;
+  next();
+});
+
 // Save cropped avatar & preserve original high-resolution photo
 app.post('/api/profile/save-avatar', async (req: Request, res: Response) => {
   try {
@@ -1353,6 +1377,13 @@ app.post('/api/stripe/verify-transaction', async (req: Request, res: Response) =
     }
 
     const tip = tipSnap.data() as TipTransaction;
+    const requester = await requireFirebaseUid(req, res);
+    if (!requester) return;
+    if (tip.recipientId !== requester) {
+      res.status(403).json({ error: 'Cannot verify another creator’s transactions' });
+      return;
+    }
+
 
     // Sandbox / Mock Mode
     if (!stripe) {
