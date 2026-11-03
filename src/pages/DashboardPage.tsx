@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
@@ -151,7 +152,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     setConnectingStripe(true);
     setStripeNotice('');
     try {
-      const res = await fetch('/api/stripe/connect', {
+      const res = await authenticatedFetch('/api/stripe/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
