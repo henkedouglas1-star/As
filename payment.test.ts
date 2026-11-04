@@ -16,9 +16,9 @@ function assert(condition: boolean, testName: string) {
   }
 }
 
-// 1. Tip Amount Validation Tests (with $1.00 minimum floor)
+// 1. Tip Amount Validation Tests (with $3.00 minimum floor)
 console.log('1. Testing Tip Amount Validation ($1, $3, $5, $10, $25, $100, $500, invalid):');
-assert(validateTipAmount(1).valid === true, '$1.00 tip amount is valid');
+assert(validateTipAmount(1).valid === false, '$1.00 tip amount is rejected by the $3 minimum');
 assert(validateTipAmount(3).valid === true, '$3.00 tip amount is valid');
 assert(validateTipAmount(5).valid === true, '$5.00 tip amount is valid');
 assert(validateTipAmount(10).valid === true, '$10.00 tip amount is valid');
