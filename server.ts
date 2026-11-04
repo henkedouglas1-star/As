@@ -1064,7 +1064,8 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
       userData
     );
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    // Never trust a caller-controlled Origin for Stripe return URLs.
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || `http://localhost:${PORT}`;
 
     // Create fresh account onboarding link using server-side Stripe SDK
     const accountLink = await stripe.accountLinks.create({
@@ -1579,13 +1580,9 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
     }
 
     if (!stripe) {
-      // Safe sandbox mode for testing without real credentials
-      res.json({
-        success: true,
-        simulated: true,
-        tipId,
-        platformFeeCents: platformFeeAmount,
-        message: 'Sandbox test tip recorded without charging real credit card.',
+      res.status(503).json({
+        error: 'Payments are temporarily unavailable. No tip has been charged.',
+        code: 'stripe_unavailable',
       });
       return;
     }
