@@ -14,7 +14,7 @@ service cloud.firestore {
     // Public creator pages need profile reads; only owners can change their profile.
     // Financial and payout fields are always managed by the trusted backend.
     match /users/{uid} {
-      allow get: if true;
+      allow get: if owner(uid);
       allow list: if false;
       allow create: if owner(uid)
         && request.resource.data.uid == uid
@@ -22,7 +22,7 @@ service cloud.firestore {
         && request.resource.data.get('chargesEnabled', false) == false;
       allow update: if owner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'bio', 'photoURL', 'avatarUrl', 'originalPhotoURL',
+          'displayName', 'bio', 'supportMessage', 'photoURL', 'avatarUrl', 'originalPhotoURL',
           'avatarCropState', 'accentColor', 'socialLinks', 'socials', 'website',
           'activeGoal', 'showTotalTips', 'showSupporters', 'updatedAt',
           'profileCompleted', 'onboardingCompleted', 'location', 'category',
