@@ -63,8 +63,8 @@ const db: Firestore = getFirestore(getAdminApps()[0], (firebaseConfig as any).fi
 // moving all privileged persistence to Firebase Admin (IAM, not client rules).
 const doc = (database: Firestore, ...segments: string[]) => database.doc(segments.join('/'));
 const collection = (database: Firestore, ...segments: string[]) => database.collection(segments.join('/'));
-const getDoc = (reference: DocumentReference) => reference.get();
-const getDocs = (reference: Query) => reference.get();
+const getDoc = (reference: DocumentReference): Promise<any> => reference.get();
+const getDocs = (reference: Query): Promise<any> => reference.get();
 const setDoc = (reference: DocumentReference, data: any, options?: { merge?: boolean }) =>
   options ? reference.set(data, options) : reference.set(data);
 const updateDoc = (reference: DocumentReference, data: any) => reference.update(data);
@@ -74,7 +74,7 @@ const where = (field: string, operator: FirebaseFirestore.WhereFilterOp, value: 
 const limit = (count: number) => (reference: Query) => reference.limit(count);
 const query = (reference: Query, ...constraints: Array<(q: Query) => Query>) =>
   constraints.reduce((current, apply) => apply(current), reference);
-const runTransaction = <T>(database: Firestore, handler: (transaction: FirebaseFirestore.Transaction) => Promise<T>) =>
+const runTransaction = <T>(database: Firestore, handler: (transaction: any) => Promise<T>) =>
   database.runTransaction(handler);
 
 // Initialize Stripe if secret key is present
