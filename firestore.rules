@@ -1,80 +1,74 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Default allow read/write or secure matching
-    match /{document=**} {
-      allow read, write: if true;
-    }
-
-    function isSignedIn() {
+    function signedIn() {
       return request.auth != null;
     }
-
-    function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function owner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function validHandle(handle) {
+      return handle is string && handle.matches('^[a-z0-9_]{3,30}$');
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // --- Users Collection ---
-    match /users/{userId} {
-      allow get: if isValidId(userId);
-      allow list: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+    // Public creator pages need profile reads; only owners can change their profile.
+    // Financial and payout fields are always managed by the trusted backend.
+    match /users/{uid} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if owner(uid)
+        && request.resource.data.uid == uid
+        && !request.resource.data.keys().hasAny(['stripeAccountId', 'chargesEnabled', 'payoutsEnabled', 'totalTipsCents', 'totalTips', 'tipCount']);
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'bio', 'photoURL', 'avatarUrl', 'originalPhotoURL',
+          'avatarCropState', 'accentColor', 'socialLinks', 'socials', 'website',
+          'activeGoal', 'showTotalTips', 'showSupporters', 'updatedAt',
+          'profileCompleted', 'onboardingCompleted', 'location', 'category',
+          'headline', 'tagline', 'description', 'links'
+        ]);
       allow delete: if false;
     }
 
-    // --- Username Registry ---
-    match /usernames/{username} {
-      allow get: if isValidId(username);
-      allow list: if true;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if false;
+    match /usernames/{handle} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if validHandle(handle)
+        && signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username == handle
+        && !exists(/databases/$(database)/documents/usernames/$(handle));
+      allow update, delete: if false;
     }
 
-    // --- Tips Collection ---
+    // Only the verified recipient can read their own transactions.
+    // Stripe webhook and checkout writes use Firebase Admin.
     match /tips/{tipId} {
-      allow get: if isValidId(tipId);
-      allow list: if true;
-      allow create: if isValidId(tipId);
-      allow update: if isValidId(tipId);
-      allow delete: if false;
+      allow get, list: if signedIn() && resource.data.recipientId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
-    // --- Reports Collection ---
+    // Abuse reports may be submitted without login, but never read by clients.
     match /reports/{reportId} {
-      allow create: if isValidId(reportId);
-      allow read, update, delete: if true;
+      allow create: if request.resource.data.keys().hasOnly(['id', 'username', 'reason', 'details', 'createdAt'])
+        && request.resource.data.id == reportId
+        && request.resource.data.details is string
+        && request.resource.data.details.size() <= 2000;
+      allow read, update, delete: if false;
     }
 
-    // --- Affiliate Collections ---
-    match /affiliateProfiles/{userId} {
-      allow read, write: if true;
-    }
+    // Affiliate commissions, payouts and referral attribution are server-managed.
+    match /affiliateProfiles/{uid} { allow read, write: if false; }
+    match /affiliateCodes/{code} { allow read, write: if false; }
+    match /referralAttributions/{id} { allow read, write: if false; }
+    match /referralActivations/{id} { allow read, write: if false; }
+    match /commissionLedger/{id} { allow read, write: if false; }
+    match /payoutBatches/{id} { allow read, write: if false; }
+    match /growthMetrics/{id} { allow read, write: if false; }
+    match /growthEvents/{id} { allow read, write: if false; }
 
-    match /referralAttributions/{documentId} {
-      allow read, write: if true;
-    }
-
-    match /referralActivations/{documentId} {
-      allow read, write: if true;
-    }
-
-    match /commissionLedger/{documentId} {
-      allow read, write: if true;
-    }
-
-    match /payoutBatches/{documentId} {
-      allow read, write: if true;
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
