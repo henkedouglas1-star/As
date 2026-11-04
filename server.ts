@@ -2056,10 +2056,17 @@ app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Respo
 // 6. Admin Payout Batch Approval (with conflict-of-interest prevention)
 app.post('/api/admin/affiliates/batch/approve', async (req: Request, res: Response) => {
   try {
-    const { batchId, adminKey, adminId } = req.body;
+    const { batchId, adminKey } = req.body;
     const expectedKey = process.env.ADMIN_KEY;
     if (!adminKey || adminKey !== expectedKey) {
       res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
+      return;
+    }
+
+    const adminId = await requireFirebaseUid(req, res);
+    if (!adminId) return;
+    if (typeof batchId !== 'string' || !/^batch_[a-zA-Z0-9_-]+$/.test(batchId)) {
+      res.status(400).json({ error: 'Invalid batch ID' });
       return;
     }
 
