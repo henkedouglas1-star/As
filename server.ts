@@ -544,9 +544,11 @@ app.use(async (req: Request, res: Response, next) => {
     res.status(403).json({ error: 'Cannot access another creator account' });
     return;
   }
-  if (req.method === 'GET') req.query.userId = uid;
-  else if (req.path === '/api/affiliate/attribution') req.body.referredUserId = uid;
-  else req.body.userId = uid;
+  res.locals.authUid = uid;
+  if (req.method !== 'GET') {
+    if (req.path === '/api/affiliate/attribution') req.body.referredUserId = uid;
+    else req.body.userId = uid;
+  }
   next();
 });
 
@@ -1119,7 +1121,7 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
 // Check Creator's Connected Account Status
 app.get('/api/stripe/account-status', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId query parameter' });
       return;
@@ -1267,7 +1269,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
 // Retrieve connected account balance from Stripe
 app.get('/api/stripe/balance', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
@@ -1320,7 +1322,7 @@ app.get('/api/stripe/balance', async (req: Request, res: Response) => {
 // Retrieve connected account payouts history from Stripe
 app.get('/api/stripe/payouts', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
@@ -1818,7 +1820,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
 // 2. Get Partner Profile & Stats
 app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
