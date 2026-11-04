@@ -1681,7 +1681,8 @@ app.post('/api/growth/event', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid creator username' });
       return;
     }
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    // Use the socket address rather than a spoofable X-Forwarded-For header.
+    const ip = req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 
     // Deduplicate rapid repeat visits within 15 minutes
@@ -1691,6 +1692,8 @@ app.post('/api/growth/event', async (req: Request, res: Response) => {
       res.json({ recorded: false, deduplicated: true });
       return;
     }
+    // Bound the in-memory dedupe map under high-volume anonymous traffic.
+    if (recentVisitsCache.size > 10000) recentVisitsCache.clear();
     recentVisitsCache.set(dedupeKey, now);
 
     const summaryRef = doc(db, 'growth_analytics', 'summary');
