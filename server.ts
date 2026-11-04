@@ -179,12 +179,12 @@ app.post(
             const tipRef = doc(db, 'tips', tipId);
             const tipSnap = await transaction.get(tipRef);
 
-            if (tipSnap.exists() && tipSnap.data().status === 'succeeded') {
+            if (tipSnap.exists && tipSnap.data().status === 'succeeded') {
               console.log(`[Stripe Webhook] Duplicate event detected for ${tipId} within transaction. Already settled.`);
               return;
             }
 
-            const existingData = tipSnap.exists() ? tipSnap.data() : {};
+            const existingData = tipSnap.exists ? tipSnap.data() : {};
             const tipRecord = {
               id: tipId,
               recipientId,
@@ -211,7 +211,7 @@ app.post(
               const userRef = doc(db, 'users', recipientId);
               const userSnap = await transaction.get(userRef);
 
-              if (userSnap.exists()) {
+              if (userSnap.exists) {
                 const userData = userSnap.data();
                 if (userData.activeGoal && userData.activeGoal.id === goalId) {
                   const currentAmount = Number(userData.activeGoal.currentAmountDollars) || 0;
@@ -229,7 +229,7 @@ app.post(
               const attrRef = doc(db, 'referralAttributions', recipientId);
               const attrSnap = await transaction.get(attrRef);
 
-              if (attrSnap.exists()) {
+              if (attrSnap.exists) {
                 const attrData = attrSnap.data();
                 const now = Date.now();
 
@@ -239,7 +239,7 @@ app.post(
                   const affiliateProfileRef = doc(db, 'affiliateProfiles', affiliateUserId);
                   const affiliateSnap = await transaction.get(affiliateProfileRef);
 
-                  if (affiliateSnap.exists()) {
+                  if (affiliateSnap.exists) {
                     const affiliateData = affiliateSnap.data();
                     let currentTierRate = Number(affiliateData.commissionRate) || 0.20;
 
@@ -248,7 +248,7 @@ app.post(
                       const activationRef = doc(db, 'referralActivations', recipientId);
                       const activationSnap = await transaction.get(activationRef);
 
-                      if (!activationSnap.exists()) {
+                      if (!activationSnap.exists) {
                         const newCount = (Number(affiliateData.activatedReferralsCount) || 0) + 1;
                         let newTier = 'partner';
                         let newRate = 0.20;
@@ -292,7 +292,7 @@ app.post(
                       const ledgerRef = doc(db, 'commissionLedger', ledgerId);
                       const ledgerSnap = await transaction.get(ledgerRef);
 
-                      if (!ledgerSnap.exists()) {
+                      if (!ledgerSnap.exists) {
                         const platformNetContributionCents = Math.max(0, platformFeeCents);
                         const commissionCents = Math.round(platformNetContributionCents * currentTierRate);
                         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -369,7 +369,7 @@ app.post(
               for (const tipDoc of tipsSnap.docs) {
                 const ledgerRef = doc(db, 'commissionLedger', `comm_${tipDoc.id}`);
                 const ledgerSnap = await getDoc(ledgerRef);
-                if (ledgerSnap.exists()) {
+                if (ledgerSnap.exists) {
                   await updateDoc(ledgerRef, {
                     state: 'reversed',
                     updatedAt: Date.now(),
@@ -407,7 +407,7 @@ app.post(
 
                 const ledgerRef = doc(db, 'commissionLedger', `comm_${tipId}`);
                 const ledgerSnap = await getDoc(ledgerRef);
-                if (ledgerSnap.exists()) {
+                if (ledgerSnap.exists) {
                   await updateDoc(ledgerRef, {
                     state: 'reversed',
                     updatedAt: Date.now(),
@@ -444,7 +444,7 @@ app.post(
 
                 const ledgerRef = doc(db, 'commissionLedger', `comm_${tipId}`);
                 const ledgerSnap = await getDoc(ledgerRef);
-                if (ledgerSnap.exists()) {
+                if (ledgerSnap.exists) {
                   await updateDoc(ledgerRef, {
                     state: isWon ? 'pending' : 'reversed',
                     updatedAt: Date.now(),
@@ -465,7 +465,7 @@ app.post(
           try {
             const tipRef = doc(db, 'tips', tipId);
             const tipSnap = await getDoc(tipRef);
-            if (tipSnap.exists() && tipSnap.data().status === 'pending') {
+            if (tipSnap.exists && tipSnap.data().status === 'pending') {
               await updateDoc(tipRef, {
                 status: 'expired',
                 completedAt: Date.now(),
@@ -690,7 +690,7 @@ app.get('/api/username/check', async (req: Request, res: Response) => {
     }
 
     const usernameDoc = await getDoc(doc(db, 'usernames', normalized));
-    if (usernameDoc.exists()) {
+    if (usernameDoc.exists) {
       const data = usernameDoc.data();
       // If current user already owns this handle
       if (currentUserId && data.uid === currentUserId) {
@@ -748,7 +748,7 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
     let oldUsername = '';
     await runTransaction(db, async (transaction) => {
       const userSnap = await transaction.get(userRef);
-      if (!userSnap.exists()) {
+      if (!userSnap.exists) {
         throw new Error('User profile not found');
       }
 
@@ -767,7 +767,7 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
 
       // Check if new handle is taken by someone else
       const newDocSnap = await transaction.get(newDocRef);
-      if (newDocSnap.exists()) {
+      if (newDocSnap.exists) {
         const existingData = newDocSnap.data();
         if (existingData.uid !== authenticatedUid) {
           throw new Error(`"${normalizedNew}" is already taken`);
@@ -842,7 +842,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
     let uid: string | null = null;
     let redirectedFrom: string | null = null;
 
-    if (usernameSnap.exists()) {
+    if (usernameSnap.exists) {
       const usernameData = usernameSnap.data();
       uid = usernameData.uid;
 
@@ -850,7 +850,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
       if (usernameData.isRedirect && usernameData.redirectTo) {
         redirectedFrom = normalized;
         const targetSnap = await getDoc(doc(db, 'usernames', usernameData.redirectTo));
-        if (targetSnap.exists()) {
+        if (targetSnap.exists) {
           uid = targetSnap.data().uid;
         }
       }
@@ -886,7 +886,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
     }
 
     const userSnap = await getDoc(doc(db, 'users', uid));
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'Creator profile not found' });
       return;
     }
@@ -1049,7 +1049,7 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
     // Verify creator profile exists in database
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'Creator profile not found. Please complete profile setup first.', code: 'user_not_found' });
       return;
     }
@@ -1136,7 +1136,7 @@ app.get('/api/stripe/account-status', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User profile not found' });
       return;
     }
@@ -1223,7 +1223,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1282,7 +1282,7 @@ app.get('/api/stripe/balance', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1331,7 +1331,7 @@ app.get('/api/stripe/payouts', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1376,7 +1376,7 @@ app.post('/api/stripe/verify-transaction', async (req: Request, res: Response) =
 
     const tipRef = doc(db, 'tips', tipId);
     const tipSnap = await getDoc(tipRef);
-    if (!tipSnap.exists()) {
+    if (!tipSnap.exists) {
       res.status(404).json({ error: 'Tip transaction not found in ledger' });
       return;
     }
@@ -1525,7 +1525,7 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
       return;
     }
     const recipientSnap = await getDoc(doc(db, 'users', recipientId));
-    if (!recipientSnap.exists() || normalizeUsername(recipientSnap.data().username || '') !== normalizedRecipient) {
+    if (!recipientSnap.exists || normalizeUsername(recipientSnap.data().username || '') !== normalizedRecipient) {
       res.status(400).json({ error: 'Recipient profile does not match the requested tip link' });
       return;
     }
@@ -1550,7 +1550,7 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
     if (recipientId) {
       try {
         const userDoc = await getDoc(doc(db, 'users', recipientId));
-        if (userDoc.exists()) {
+        if (userDoc.exists) {
           creatorStripeAccountId = userDoc.data().stripeAccountId || null;
         }
       } catch (err) {
@@ -1721,7 +1721,7 @@ app.post('/api/growth/event', async (req: Request, res: Response) => {
 app.get('/api/growth/metrics', async (_req: Request, res: Response) => {
   try {
     const summarySnap = await getDoc(doc(db, 'growth_analytics', 'summary'));
-    const summary = summarySnap.exists() ? summarySnap.data() : {};
+    const summary = summarySnap.exists ? summarySnap.data() : {};
 
     const totalVisits = Number(summary.totalVisits || 0);
     const qrScans = Number(summary.qrScans || 0);
@@ -1767,7 +1767,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
     }
 
     const userSnap = await getDoc(doc(db, 'users', userId));
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'User profile not found' });
       return;
     }
@@ -1778,7 +1778,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
 
     const profileRef = doc(db, 'affiliateProfiles', userId);
     const existingProfile = await getDoc(profileRef);
-    if (existingProfile.exists()) {
+    if (existingProfile.exists) {
       res.json({ success: true, profile: existingProfile.data() });
       return;
     }
@@ -1786,7 +1786,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
     // Check code uniqueness
     const codeRef = doc(db, 'affiliateCodes', partnerCode);
     const codeSnap = await getDoc(codeRef);
-    if (codeSnap.exists() && codeSnap.data().userId !== userId) {
+    if (codeSnap.exists && codeSnap.data().userId !== userId) {
       res.status(400).json({ error: 'Partner code is already taken. Please choose another.' });
       return;
     }
@@ -1828,7 +1828,7 @@ app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
     }
 
     const profileSnap = await getDoc(doc(db, 'affiliateProfiles', userId));
-    if (!profileSnap.exists()) {
+    if (!profileSnap.exists) {
       res.json({ enrolled: false });
       return;
     }
@@ -1894,7 +1894,7 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
 
     const cleanCode = partnerCode.toLowerCase().trim();
     const codeSnap = await getDoc(doc(db, 'affiliateCodes', cleanCode));
-    if (!codeSnap.exists()) {
+    if (!codeSnap.exists) {
       res.status(404).json({ error: 'Invalid partner code' });
       return;
     }
@@ -1908,7 +1908,7 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
     // Check if attribution already exists for this user (First-win rule)
     const attrRef = doc(db, 'referralAttributions', referredUserId);
     const existingAttr = await getDoc(attrRef);
-    if (existingAttr.exists()) {
+    if (existingAttr.exists) {
       res.json({ success: true, message: 'Attribution already recorded' });
       return;
     }
@@ -2065,7 +2065,7 @@ app.post('/api/admin/affiliates/batch/approve', async (req: Request, res: Respon
 
     const batchRef = doc(db, 'payoutBatches', batchId);
     const batchSnap = await getDoc(batchRef);
-    if (!batchSnap.exists()) {
+    if (!batchSnap.exists) {
       res.status(404).json({ error: 'Payout batch not found' });
       return;
     }
@@ -2216,7 +2216,7 @@ app.get('/:username', async (req: Request, res: Response, next) => {
 
   try {
     const creatorSnap = await getDoc(doc(db, 'creators', username));
-    if (creatorSnap.exists()) {
+    if (creatorSnap.exists) {
       const creator = creatorSnap.data();
       const displayName = creator.displayName || username;
       const bio = creator.bio || 'Create your personal tip link. Share it anywhere. Make every thank-you count.';
