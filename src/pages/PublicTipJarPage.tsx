@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { UserProfile, TipTransaction } from '../types';
+import { UserProfile } from '../types';
 import { TIP_TIERS, BRAND_NAME, TAGLINE } from '../lib/theme';
 import { validateTipAmount } from '../lib/rules';
 import { getCanonicalProfileUrl } from '../lib/urlUtils';
@@ -158,32 +156,6 @@ export default function PublicTipJarPage({ username, onNavigate }: PublicTipJarP
       if (data.url) {
         // Redirect directly to Stripe Checkout
         window.location.href = data.url;
-        return;
-      }
-
-      // If simulated fallback
-      if (data.success || data.simulated) {
-        const tipRecord: TipTransaction = {
-          id: data.tipId || 'tip_' + Date.now(),
-          recipientId: creator.uid,
-          recipientUsername: creator.username,
-          amountCents: Math.round(numericAmount * 100),
-          currency: 'usd',
-          supporterName: supporterName.trim() || 'Anonymous',
-          message: message.trim(),
-          status: 'succeeded',
-          createdAt: Date.now(),
-        };
-
-        try {
-          await setDoc(doc(db, 'tips', tipRecord.id), tipRecord);
-        } catch (e) {
-          console.warn('Tip store warning:', e);
-        }
-
-        onNavigate(
-          `success?creator=${encodeURIComponent(creator.displayName || creator.username)}&handle=${creator.username}&amount=${numericAmount.toFixed(2)}`
-        );
         return;
       }
 
