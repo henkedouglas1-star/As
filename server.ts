@@ -1854,7 +1854,7 @@ app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
     const now = Date.now();
 
     const ledgerEntries: any[] = [];
-    ledgerSnap.forEach((docSnap) => {
+    ledgerSnap.forEach((docSnap: FirebaseFirestore.QueryDocumentSnapshot) => {
       const entry = docSnap.data();
       ledgerEntries.push(entry);
       if (entry.state === 'pending') {
@@ -1872,7 +1872,7 @@ app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
     const attributionsQuery = query(collection(db, 'referralAttributions'), where('affiliateUserId', '==', userId));
     const attributionsSnap = await getDocs(attributionsQuery);
     const referrals: any[] = [];
-    attributionsSnap.forEach((d) => referrals.push(d.data()));
+    attributionsSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => referrals.push(d.data()));
 
     res.json({
       enrolled: true,
@@ -1955,15 +1955,15 @@ app.get('/api/admin/affiliates', async (req: Request, res: Response) => {
     }
     const profilesSnap = await getDocs(collection(db, 'affiliateProfiles'));
     const profiles: any[] = [];
-    profilesSnap.forEach((d) => profiles.push(d.data()));
+    profilesSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => profiles.push(d.data()));
 
     const ledgerSnap = await getDocs(collection(db, 'commissionLedger'));
     const ledger: any[] = [];
-    ledgerSnap.forEach((d) => ledger.push(d.data()));
+    ledgerSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => ledger.push(d.data()));
 
     const batchesSnap = await getDocs(collection(db, 'payoutBatches'));
     const batches: any[] = [];
-    batchesSnap.forEach((d) => batches.push(d.data()));
+    batchesSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => batches.push(d.data()));
 
     let totalLiabilityCents = 0;
     let availableObligationsCents = 0;
@@ -2010,7 +2010,7 @@ app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Respo
     const byPartner: Record<string, { totalCents: number; ledgerIds: string[] }> = {};
     const now = Date.now();
 
-    ledgerSnap.forEach((docSnap) => {
+    ledgerSnap.forEach((docSnap: FirebaseFirestore.QueryDocumentSnapshot) => {
       const entry = docSnap.data();
       if (entry.state === 'available' && entry.availableAt <= now) {
         if (!byPartner[entry.affiliateUserId]) {
