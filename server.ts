@@ -1671,6 +1671,16 @@ setInterval(() => {
 app.post('/api/growth/event', async (req: Request, res: Response) => {
   try {
     const { event, username, ref, source } = req.body;
+    // Public traffic may only record visits. Signup, activation and first-tip
+    // counts must be derived from trusted auth/payment events, not browser input.
+    if (event !== 'profile_visit') {
+      res.status(403).json({ error: 'This growth event requires a trusted server event' });
+      return;
+    }
+    if (typeof username !== 'string' || username.length > 64) {
+      res.status(400).json({ error: 'Invalid creator username' });
+      return;
+    }
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 
