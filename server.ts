@@ -562,12 +562,16 @@ app.post('/api/profile/save-avatar', async (req: Request, res: Response) => {
       return;
     }
 
-    // Helper to decode base64 data URL to buffer
+    // Accept bounded JPEG/PNG/WebP images only; reject malformed data URLs.
     const saveBase64Image = (dataUrl: string, filepath: string) => {
-      const matches = dataUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-      if (matches && matches[2]) {
-        fs.writeFileSync(filepath, Buffer.from(matches[2], 'base64'));
+      if (typeof dataUrl !== 'string' || dataUrl.length > 8_000_000) {
+        throw new Error('Invalid or oversized avatar image');
       }
+      const matches = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+      if (!matches) throw new Error('Unsupported avatar image format');
+      const bytes = Buffer.from(matches[2], 'base64');
+      if (!bytes.length || bytes.length > 6_000_000) throw new Error('Invalid avatar image size');
+      fs.writeFileSync(filepath, bytes);
     };
 
     const croppedFilename = `${userId}_cropped_${Date.now()}.jpg`;
