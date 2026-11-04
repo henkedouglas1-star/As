@@ -18,7 +18,8 @@ service cloud.firestore {
       allow list: if false;
       allow create: if owner(uid)
         && request.resource.data.uid == uid
-        && !request.resource.data.keys().hasAny(['stripeAccountId', 'chargesEnabled', 'payoutsEnabled', 'totalTipsCents', 'totalTips', 'tipCount']);
+        && !request.resource.data.keys().hasAny(['stripeAccountId', 'payoutsEnabled', 'totalTipsCents', 'totalTips', 'tipCount'])
+        && request.resource.data.get('chargesEnabled', false) == false;
       allow update: if owner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'bio', 'photoURL', 'avatarUrl', 'originalPhotoURL',
