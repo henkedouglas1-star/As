@@ -7,22 +7,10 @@ import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import { initializeApp as initializeAdminApp, getApps as getAdminApps, applicationDefault } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  increment,
-  collection,
-  query,
-  where,
-  limit,
-  getDocs,
-  runTransaction,
-  Firestore,
-} from 'firebase/firestore';
+  getFirestore, FieldValue, type Firestore, type DocumentReference,
+  type CollectionReference, type Query,
+} from 'firebase-admin/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 import {
   calculatePlatformFee,
@@ -69,8 +57,25 @@ const DEFAULT_FEE_PERCENT = 1;
 const DEFAULT_FIXED_CENTS = 5;
 
 // Initialize Firebase client for server-side persistence
-const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const db: Firestore = getFirestore(firebaseApp, (firebaseConfig as any).firestoreDatabaseId);
+const db: Firestore = getFirestore(getAdminApps()[0], (firebaseConfig as any).firestoreDatabaseId);
+
+// Compatibility wrappers keep existing business transactions intact while
+// moving all privileged persistence to Firebase Admin (IAM, not client rules).
+const doc = (database: Firestore, ...segments: string[]) => database.doc(segments.join('/'));
+const collection = (database: Firestore, ...segments: string[]) => database.collection(segments.join('/'));
+const getDoc = (reference: DocumentReference) => reference.get();
+const getDocs = (reference: Query) => reference.get();
+const setDoc = (reference: DocumentReference, data: any, options?: { merge?: boolean }) =>
+  options ? reference.set(data, options) : reference.set(data);
+const updateDoc = (reference: DocumentReference, data: any) => reference.update(data);
+const increment = (amount: number) => FieldValue.increment(amount);
+const where = (field: string, operator: FirebaseFirestore.WhereFilterOp, value: any) =>
+  (reference: Query) => reference.where(field, operator, value);
+const limit = (count: number) => (reference: Query) => reference.limit(count);
+const query = (reference: Query, ...constraints: Array<(q: Query) => Query>) =>
+  constraints.reduce((current, apply) => apply(current), reference);
+const runTransaction = <T>(database: Firestore, handler: (transaction: FirebaseFirestore.Transaction) => Promise<T>) =>
+  database.runTransaction(handler);
 
 // Initialize Stripe if secret key is present
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
