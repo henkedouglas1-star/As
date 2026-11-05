@@ -1071,7 +1071,7 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
     );
 
     // Never trust a caller-controlled Origin for Stripe return URLs.
-    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
 
     // Create fresh account onboarding link using server-side Stripe SDK
     const accountLink = await stripe.accountLinks.create({
@@ -1247,7 +1247,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
 
     // If onboarding is incomplete, stripe.accounts.createLoginLink fails.
     // Return a fresh account_onboarding link instead so user can finish smoothly.
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
     if (!account.details_submitted || !account.payouts_enabled) {
       console.log(`[Stripe Connect] Account ${stripeAccountId} onboarding not yet completed. Returning fresh onboarding link instead of login link.`);
       const onboardingLink = await stripe.accountLinks.create({
@@ -1593,7 +1593,7 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
       return;
     }
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       line_items: [
