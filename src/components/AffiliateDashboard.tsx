@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
@@ -48,7 +49,7 @@ export const AffiliateDashboard: React.FC<AffiliateDashboardProps> = ({ currentU
       }
 
       try {
-        const res = await fetch(`/api/affiliate/profile?userId=${currentUser.uid}`);
+        const res = await authenticatedFetch(`/api/affiliate/profile?userId=${currentUser.uid}`);
         const data = await res.json();
         if (data.enrolled) {
           setProfile(data.profile);

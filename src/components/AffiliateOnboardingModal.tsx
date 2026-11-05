@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import React, { useState } from 'react';
 import { Sparkles, CheckCircle2, ArrowRight, Share2, DollarSign, ShieldCheck } from 'lucide-react';
 import { BRAND_DOMAIN } from '../lib/constants';
@@ -35,7 +36,7 @@ export const AffiliateOnboardingModal: React.FC<AffiliateOnboardingModalProps> =
     setError(null);
 
     try {
-      const res = await fetch('/api/affiliate/enroll', {
+      const res = await authenticatedFetch('/api/affiliate/enroll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

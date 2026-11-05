@@ -5,22 +5,12 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp as initializeAdminApp, getApps as getAdminApps, applicationDefault } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  increment,
-  collection,
-  query,
-  where,
-  limit,
-  getDocs,
-  runTransaction,
-  Firestore,
-} from 'firebase/firestore';
+  getFirestore, FieldValue, type Firestore, type DocumentReference,
+  type CollectionReference, type Query,
+} from 'firebase-admin/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 import {
   calculatePlatformFee,
@@ -36,6 +26,29 @@ import { cleanFirestorePayload } from './src/lib/firestoreUtils';
 
 dotenv.config();
 
+// Firebase Admin verifies signed Firebase ID tokens using server-side credentials.
+// Cloud Run should supply Application Default Credentials to this service.
+if (!getAdminApps().length) {
+  initializeAdminApp({ credential: applicationDefault() });
+}
+
+async function requireFirebaseUid(req: Request, res: Response): Promise<string | null> {
+  const authorization = req.headers.authorization || '';
+  const match = /^Bearer (\S+)$/.exec(authorization);
+  if (!match) {
+    res.status(401).json({ error: 'Firebase sign-in required' });
+    return null;
+  }
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(match[1], true);
+    return decoded.uid;
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired Firebase authentication token' });
+    return null;
+  }
+}
+
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -44,8 +57,25 @@ const DEFAULT_FEE_PERCENT = 1;
 const DEFAULT_FIXED_CENTS = 5;
 
 // Initialize Firebase client for server-side persistence
-const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const db: Firestore = getFirestore(firebaseApp, (firebaseConfig as any).firestoreDatabaseId);
+const db: Firestore = getFirestore(getAdminApps()[0], (firebaseConfig as any).firestoreDatabaseId);
+
+// Compatibility wrappers keep existing business transactions intact while
+// moving all privileged persistence to Firebase Admin (IAM, not client rules).
+const doc = (database: Firestore, ...segments: string[]) => database.doc(segments.join('/'));
+const collection = (database: Firestore, ...segments: string[]) => database.collection(segments.join('/'));
+const getDoc = (reference: DocumentReference): Promise<any> => reference.get();
+const getDocs = (reference: Query): Promise<any> => reference.get();
+const setDoc = (reference: DocumentReference, data: any, options?: { merge?: boolean }) =>
+  options ? reference.set(data, options) : reference.set(data);
+const updateDoc = (reference: DocumentReference, data: any) => reference.update(data);
+const increment = (amount: number) => FieldValue.increment(amount);
+const where = (field: string, operator: FirebaseFirestore.WhereFilterOp, value: any) =>
+  (reference: Query) => reference.where(field, operator, value);
+const limit = (count: number) => (reference: Query) => reference.limit(count);
+const query = (reference: Query, ...constraints: Array<(q: Query) => Query>) =>
+  constraints.reduce((current, apply) => apply(current), reference);
+const runTransaction = <T>(database: Firestore, handler: (transaction: any) => Promise<T>) =>
+  database.runTransaction(handler);
 
 // Initialize Stripe if secret key is present
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -149,12 +179,12 @@ app.post(
             const tipRef = doc(db, 'tips', tipId);
             const tipSnap = await transaction.get(tipRef);
 
-            if (tipSnap.exists() && tipSnap.data().status === 'succeeded') {
+            if (tipSnap.exists && tipSnap.data().status === 'succeeded') {
               console.log(`[Stripe Webhook] Duplicate event detected for ${tipId} within transaction. Already settled.`);
               return;
             }
 
-            const existingData = tipSnap.exists() ? tipSnap.data() : {};
+            const existingData = tipSnap.exists ? tipSnap.data() : {};
             const tipRecord = {
               id: tipId,
               recipientId,
@@ -181,7 +211,7 @@ app.post(
               const userRef = doc(db, 'users', recipientId);
               const userSnap = await transaction.get(userRef);
 
-              if (userSnap.exists()) {
+              if (userSnap.exists) {
                 const userData = userSnap.data();
                 if (userData.activeGoal && userData.activeGoal.id === goalId) {
                   const currentAmount = Number(userData.activeGoal.currentAmountDollars) || 0;
@@ -199,7 +229,7 @@ app.post(
               const attrRef = doc(db, 'referralAttributions', recipientId);
               const attrSnap = await transaction.get(attrRef);
 
-              if (attrSnap.exists()) {
+              if (attrSnap.exists) {
                 const attrData = attrSnap.data();
                 const now = Date.now();
 
@@ -209,7 +239,7 @@ app.post(
                   const affiliateProfileRef = doc(db, 'affiliateProfiles', affiliateUserId);
                   const affiliateSnap = await transaction.get(affiliateProfileRef);
 
-                  if (affiliateSnap.exists()) {
+                  if (affiliateSnap.exists) {
                     const affiliateData = affiliateSnap.data();
                     let currentTierRate = Number(affiliateData.commissionRate) || 0.20;
 
@@ -218,7 +248,7 @@ app.post(
                       const activationRef = doc(db, 'referralActivations', recipientId);
                       const activationSnap = await transaction.get(activationRef);
 
-                      if (!activationSnap.exists()) {
+                      if (!activationSnap.exists) {
                         const newCount = (Number(affiliateData.activatedReferralsCount) || 0) + 1;
                         let newTier = 'partner';
                         let newRate = 0.20;
@@ -262,7 +292,7 @@ app.post(
                       const ledgerRef = doc(db, 'commissionLedger', ledgerId);
                       const ledgerSnap = await transaction.get(ledgerRef);
 
-                      if (!ledgerSnap.exists()) {
+                      if (!ledgerSnap.exists) {
                         const platformNetContributionCents = Math.max(0, platformFeeCents);
                         const commissionCents = Math.round(platformNetContributionCents * currentTierRate);
                         const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -335,16 +365,16 @@ app.post(
                 console.log(`[Stripe Webhook] Marked tip document ${tipDoc.id} as refunded.`);
               }
 
-              // 2. Reverse associated affiliate commission ledger entries
-              const ledgerQuery = query(collection(db, 'commissionLedger'), where('sourceTipId', '==', paymentIntentId));
-              const ledgerSnap = await getDocs(ledgerQuery);
-
-              for (const docSnap of ledgerSnap.docs) {
-                await updateDoc(docSnap.ref, {
-                  state: 'reversed',
-                  updatedAt: Date.now(),
-                });
-                console.log(`[Affiliate Commission Reversal] Reversed commission entry ${docSnap.id} due to charge refund.`);
+              // 2. Reverse commissions for the refunded tips, keyed by tip ID.
+              for (const tipDoc of tipsSnap.docs) {
+                const ledgerRef = doc(db, 'commissionLedger', `comm_${tipDoc.id}`);
+                const ledgerSnap = await getDoc(ledgerRef);
+                if (ledgerSnap.exists) {
+                  await updateDoc(ledgerRef, {
+                    state: 'reversed',
+                    updatedAt: Date.now(),
+                  });
+                }
               }
             } catch (refErr) {
               console.error('[Stripe Webhook] Error reversing commission and updating tip on refund:', refErr);
@@ -377,7 +407,7 @@ app.post(
 
                 const ledgerRef = doc(db, 'commissionLedger', `comm_${tipId}`);
                 const ledgerSnap = await getDoc(ledgerRef);
-                if (ledgerSnap.exists()) {
+                if (ledgerSnap.exists) {
                   await updateDoc(ledgerRef, {
                     state: 'reversed',
                     updatedAt: Date.now(),
@@ -414,7 +444,7 @@ app.post(
 
                 const ledgerRef = doc(db, 'commissionLedger', `comm_${tipId}`);
                 const ledgerSnap = await getDoc(ledgerRef);
-                if (ledgerSnap.exists()) {
+                if (ledgerSnap.exists) {
                   await updateDoc(ledgerRef, {
                     state: isWon ? 'pending' : 'reversed',
                     updatedAt: Date.now(),
@@ -435,7 +465,7 @@ app.post(
           try {
             const tipRef = doc(db, 'tips', tipId);
             const tipSnap = await getDoc(tipRef);
-            if (tipSnap.exists() && tipSnap.data().status === 'pending') {
+            if (tipSnap.exists && tipSnap.data().status === 'pending') {
               await updateDoc(tipRef, {
                 status: 'expired',
                 completedAt: Date.now(),
@@ -496,6 +526,32 @@ app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
+// Require signed Firebase identity and ownership for private creator endpoints.
+const privateRoutes = new Set([
+  '/api/profile/save-avatar', '/api/profile/avatar', '/api/stripe/connect',
+  '/api/stripe/account-status', '/api/stripe/dashboard-link', '/api/stripe/balance',
+  '/api/stripe/payouts', '/api/affiliate/enroll', '/api/affiliate/profile',
+  '/api/affiliate/attribution', '/api/stripe/verify-transaction',
+]);
+app.use(async (req: Request, res: Response, next) => {
+  if (!privateRoutes.has(req.path)) return next();
+  const uid = await requireFirebaseUid(req, res);
+  if (!uid) return;
+  const suppliedId = req.path === '/api/affiliate/attribution'
+    ? req.body?.referredUserId
+    : (req.method === 'GET' ? req.query.userId : req.body?.userId);
+  if (suppliedId && suppliedId !== uid) {
+    res.status(403).json({ error: 'Cannot access another creator account' });
+    return;
+  }
+  res.locals.authUid = uid;
+  if (req.method !== 'GET') {
+    if (req.path === '/api/affiliate/attribution') req.body.referredUserId = uid;
+    else req.body.userId = uid;
+  }
+  next();
+});
+
 // Save cropped avatar & preserve original high-resolution photo
 app.post('/api/profile/save-avatar', async (req: Request, res: Response) => {
   try {
@@ -506,12 +562,16 @@ app.post('/api/profile/save-avatar', async (req: Request, res: Response) => {
       return;
     }
 
-    // Helper to decode base64 data URL to buffer
+    // Accept bounded JPEG/PNG/WebP images only; reject malformed data URLs.
     const saveBase64Image = (dataUrl: string, filepath: string) => {
-      const matches = dataUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-      if (matches && matches[2]) {
-        fs.writeFileSync(filepath, Buffer.from(matches[2], 'base64'));
+      if (typeof dataUrl !== 'string' || dataUrl.length > 8_000_000) {
+        throw new Error('Invalid or oversized avatar image');
       }
+      const matches = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+      if (!matches) throw new Error('Unsupported avatar image format');
+      const bytes = Buffer.from(matches[2], 'base64');
+      if (!bytes.length || bytes.length > 6_000_000) throw new Error('Invalid avatar image size');
+      fs.writeFileSync(filepath, bytes);
     };
 
     const croppedFilename = `${userId}_cropped_${Date.now()}.jpg`;
@@ -636,7 +696,7 @@ app.get('/api/username/check', async (req: Request, res: Response) => {
     }
 
     const usernameDoc = await getDoc(doc(db, 'usernames', normalized));
-    if (usernameDoc.exists()) {
+    if (usernameDoc.exists) {
       const data = usernameDoc.data();
       // If current user already owns this handle
       if (currentUserId && data.uid === currentUserId) {
@@ -663,7 +723,6 @@ app.get('/api/username/check', async (req: Request, res: Response) => {
 // Change username endpoint (with server-side token/session authentication, atomic runTransaction, and loop prevention)
 app.post('/api/username/change', async (req: Request, res: Response) => {
   try {
-    const authHeader = req.headers.authorization;
     const { userId, newUsername } = req.body;
 
     if (!newUsername) {
@@ -671,17 +730,11 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
       return;
     }
 
-    // 1. Authenticate caller: Verify Bearer token or validated session header
-    let authenticatedUid = userId;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split('Bearer ')[1];
-      if (token.startsWith('demo-token-')) {
-        authenticatedUid = token.replace('demo-token-', '');
-      }
-    }
-
-    if (!authenticatedUid || (userId && userId !== authenticatedUid)) {
-      res.status(401).json({ error: 'Unauthorized: Missing or invalid authentication token' });
+    // Verify the signed Firebase ID token; never trust a client-supplied UID.
+    const authenticatedUid = await requireFirebaseUid(req, res);
+    if (!authenticatedUid) return;
+    if (userId && userId !== authenticatedUid) {
+      res.status(403).json({ error: 'Cannot change another user’s username' });
       return;
     }
 
@@ -701,7 +754,7 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
     let oldUsername = '';
     await runTransaction(db, async (transaction) => {
       const userSnap = await transaction.get(userRef);
-      if (!userSnap.exists()) {
+      if (!userSnap.exists) {
         throw new Error('User profile not found');
       }
 
@@ -720,7 +773,7 @@ app.post('/api/username/change', async (req: Request, res: Response) => {
 
       // Check if new handle is taken by someone else
       const newDocSnap = await transaction.get(newDocRef);
-      if (newDocSnap.exists()) {
+      if (newDocSnap.exists) {
         const existingData = newDocSnap.data();
         if (existingData.uid !== authenticatedUid) {
           throw new Error(`"${normalizedNew}" is already taken`);
@@ -795,7 +848,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
     let uid: string | null = null;
     let redirectedFrom: string | null = null;
 
-    if (usernameSnap.exists()) {
+    if (usernameSnap.exists) {
       const usernameData = usernameSnap.data();
       uid = usernameData.uid;
 
@@ -803,7 +856,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
       if (usernameData.isRedirect && usernameData.redirectTo) {
         redirectedFrom = normalized;
         const targetSnap = await getDoc(doc(db, 'usernames', usernameData.redirectTo));
-        if (targetSnap.exists()) {
+        if (targetSnap.exists) {
           uid = targetSnap.data().uid;
         }
       }
@@ -839,7 +892,7 @@ app.get('/api/user/by-username/:username', async (req: Request, res: Response) =
     }
 
     const userSnap = await getDoc(doc(db, 'users', uid));
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'Creator profile not found' });
       return;
     }
@@ -1002,7 +1055,7 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
     // Verify creator profile exists in database
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'Creator profile not found. Please complete profile setup first.', code: 'user_not_found' });
       return;
     }
@@ -1017,7 +1070,8 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
       userData
     );
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    // Never trust a caller-controlled Origin for Stripe return URLs.
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
 
     // Create fresh account onboarding link using server-side Stripe SDK
     const accountLink = await stripe.accountLinks.create({
@@ -1071,7 +1125,7 @@ app.post('/api/stripe/connect', async (req: Request, res: Response) => {
 // Check Creator's Connected Account Status
 app.get('/api/stripe/account-status', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId query parameter' });
       return;
@@ -1089,7 +1143,7 @@ app.get('/api/stripe/account-status', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User profile not found' });
       return;
     }
@@ -1176,7 +1230,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1193,7 +1247,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
 
     // If onboarding is incomplete, stripe.accounts.createLoginLink fails.
     // Return a fresh account_onboarding link instead so user can finish smoothly.
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
     if (!account.details_submitted || !account.payouts_enabled) {
       console.log(`[Stripe Connect] Account ${stripeAccountId} onboarding not yet completed. Returning fresh onboarding link instead of login link.`);
       const onboardingLink = await stripe.accountLinks.create({
@@ -1219,7 +1273,7 @@ app.post('/api/stripe/dashboard-link', async (req: Request, res: Response) => {
 // Retrieve connected account balance from Stripe
 app.get('/api/stripe/balance', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
@@ -1235,7 +1289,7 @@ app.get('/api/stripe/balance', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1272,7 +1326,7 @@ app.get('/api/stripe/balance', async (req: Request, res: Response) => {
 // Retrieve connected account payouts history from Stripe
 app.get('/api/stripe/payouts', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
@@ -1284,7 +1338,7 @@ app.get('/api/stripe/payouts', async (req: Request, res: Response) => {
     }
 
     const userDoc = await getDoc(doc(db, 'users', userId));
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -1329,12 +1383,19 @@ app.post('/api/stripe/verify-transaction', async (req: Request, res: Response) =
 
     const tipRef = doc(db, 'tips', tipId);
     const tipSnap = await getDoc(tipRef);
-    if (!tipSnap.exists()) {
+    if (!tipSnap.exists) {
       res.status(404).json({ error: 'Tip transaction not found in ledger' });
       return;
     }
 
     const tip = tipSnap.data() as TipTransaction;
+    const requester = await requireFirebaseUid(req, res);
+    if (!requester) return;
+    if (tip.recipientId !== requester) {
+      res.status(403).json({ error: 'Cannot verify another creator’s transactions' });
+      return;
+    }
+
 
     // Sandbox / Mock Mode
     if (!stripe) {
@@ -1464,6 +1525,18 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
   try {
     const { username, recipientId, amountInDollars, supporterName, message, goalId } = req.body;
 
+    // Never allow the caller to redirect a tip by supplying another creator's UID.
+    const normalizedRecipient = normalizeUsername(String(username || ''));
+    if (!recipientId || !normalizedRecipient) {
+      res.status(400).json({ error: 'A valid recipient is required' });
+      return;
+    }
+    const recipientSnap = await getDoc(doc(db, 'users', recipientId));
+    if (!recipientSnap.exists || normalizeUsername(recipientSnap.data().username || '') !== normalizedRecipient) {
+      res.status(400).json({ error: 'Recipient profile does not match the requested tip link' });
+      return;
+    }
+
     const amount = Number(amountInDollars);
     const validation = validateTipAmount(amount);
     if (!validation.valid) {
@@ -1484,7 +1557,7 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
     if (recipientId) {
       try {
         const userDoc = await getDoc(doc(db, 'users', recipientId));
-        if (userDoc.exists()) {
+        if (userDoc.exists) {
           creatorStripeAccountId = userDoc.data().stripeAccountId || null;
         }
       } catch (err) {
@@ -1513,18 +1586,14 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
     }
 
     if (!stripe) {
-      // Safe sandbox mode for testing without real credentials
-      res.json({
-        success: true,
-        simulated: true,
-        tipId,
-        platformFeeCents: platformFeeAmount,
-        message: 'Sandbox test tip recorded without charging real credit card.',
+      res.status(503).json({
+        error: 'Payments are temporarily unavailable. No tip has been charged.',
+        code: 'stripe_unavailable',
       });
       return;
     }
 
-    const origin = req.headers.origin || process.env.APP_URL || `http://localhost:${PORT}`;
+    const origin = process.env.PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://tipzeme.ai.studio' : `http://localhost:${PORT}`);
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       line_items: [
@@ -1576,7 +1645,8 @@ app.post('/api/checkout', async (req: Request, res: Response) => {
         return;
       }
     } else {
-      session = await stripe.checkout.sessions.create(sessionParams);
+      res.status(400).json({ error: 'Creator payouts are not connected. Direct charges require an active connected Stripe account.', code: 'connected_account_required' });
+      return;
     }
 
     res.json({ url: session.url, tipId, platformFeeCents: platformFeeAmount });
@@ -1605,7 +1675,18 @@ setInterval(() => {
 app.post('/api/growth/event', async (req: Request, res: Response) => {
   try {
     const { event, username, ref, source } = req.body;
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    // Public traffic may only record visits. Signup, activation and first-tip
+    // counts must be derived from trusted auth/payment events, not browser input.
+    if (event !== 'profile_visit') {
+      res.status(403).json({ error: 'This growth event requires a trusted server event' });
+      return;
+    }
+    if (typeof username !== 'string' || username.length > 64) {
+      res.status(400).json({ error: 'Invalid creator username' });
+      return;
+    }
+    // Use the socket address rather than a spoofable X-Forwarded-For header.
+    const ip = req.socket.remoteAddress || 'unknown';
     const now = Date.now();
 
     // Deduplicate rapid repeat visits within 15 minutes
@@ -1615,6 +1696,8 @@ app.post('/api/growth/event', async (req: Request, res: Response) => {
       res.json({ recorded: false, deduplicated: true });
       return;
     }
+    // Bound the in-memory dedupe map under high-volume anonymous traffic.
+    if (recentVisitsCache.size > 10000) recentVisitsCache.clear();
     recentVisitsCache.set(dedupeKey, now);
 
     const summaryRef = doc(db, 'growth_analytics', 'summary');
@@ -1654,7 +1737,7 @@ app.post('/api/growth/event', async (req: Request, res: Response) => {
 app.get('/api/growth/metrics', async (_req: Request, res: Response) => {
   try {
     const summarySnap = await getDoc(doc(db, 'growth_analytics', 'summary'));
-    const summary = summarySnap.exists() ? summarySnap.data() : {};
+    const summary = summarySnap.exists ? summarySnap.data() : {};
 
     const totalVisits = Number(summary.totalVisits || 0);
     const qrScans = Number(summary.qrScans || 0);
@@ -1700,7 +1783,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
     }
 
     const userSnap = await getDoc(doc(db, 'users', userId));
-    if (!userSnap.exists()) {
+    if (!userSnap.exists) {
       res.status(404).json({ error: 'User profile not found' });
       return;
     }
@@ -1711,7 +1794,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
 
     const profileRef = doc(db, 'affiliateProfiles', userId);
     const existingProfile = await getDoc(profileRef);
-    if (existingProfile.exists()) {
+    if (existingProfile.exists) {
       res.json({ success: true, profile: existingProfile.data() });
       return;
     }
@@ -1719,7 +1802,7 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
     // Check code uniqueness
     const codeRef = doc(db, 'affiliateCodes', partnerCode);
     const codeSnap = await getDoc(codeRef);
-    if (codeSnap.exists() && codeSnap.data().userId !== userId) {
+    if (codeSnap.exists && codeSnap.data().userId !== userId) {
       res.status(400).json({ error: 'Partner code is already taken. Please choose another.' });
       return;
     }
@@ -1754,14 +1837,14 @@ app.post('/api/affiliate/enroll', async (req: Request, res: Response) => {
 // 2. Get Partner Profile & Stats
 app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
   try {
-    const userId = String(req.query.userId || '');
+    const userId = String(res.locals.authUid || '');
     if (!userId) {
       res.status(400).json({ error: 'Missing userId parameter' });
       return;
     }
 
     const profileSnap = await getDoc(doc(db, 'affiliateProfiles', userId));
-    if (!profileSnap.exists()) {
+    if (!profileSnap.exists) {
       res.json({ enrolled: false });
       return;
     }
@@ -1778,7 +1861,7 @@ app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
     const now = Date.now();
 
     const ledgerEntries: any[] = [];
-    ledgerSnap.forEach((docSnap) => {
+    ledgerSnap.forEach((docSnap: FirebaseFirestore.QueryDocumentSnapshot) => {
       const entry = docSnap.data();
       ledgerEntries.push(entry);
       if (entry.state === 'pending') {
@@ -1796,7 +1879,7 @@ app.get('/api/affiliate/profile', async (req: Request, res: Response) => {
     const attributionsQuery = query(collection(db, 'referralAttributions'), where('affiliateUserId', '==', userId));
     const attributionsSnap = await getDocs(attributionsQuery);
     const referrals: any[] = [];
-    attributionsSnap.forEach((d) => referrals.push(d.data()));
+    attributionsSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => referrals.push(d.data()));
 
     res.json({
       enrolled: true,
@@ -1827,7 +1910,7 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
 
     const cleanCode = partnerCode.toLowerCase().trim();
     const codeSnap = await getDoc(doc(db, 'affiliateCodes', cleanCode));
-    if (!codeSnap.exists()) {
+    if (!codeSnap.exists) {
       res.status(404).json({ error: 'Invalid partner code' });
       return;
     }
@@ -1841,7 +1924,7 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
     // Check if attribution already exists for this user (First-win rule)
     const attrRef = doc(db, 'referralAttributions', referredUserId);
     const existingAttr = await getDoc(attrRef);
-    if (existingAttr.exists()) {
+    if (existingAttr.exists) {
       res.json({ success: true, message: 'Attribution already recorded' });
       return;
     }
@@ -1872,17 +1955,22 @@ app.post('/api/affiliate/attribution', async (req: Request, res: Response) => {
 app.get('/api/admin/affiliates', async (req: Request, res: Response) => {
   try {
     const adminKey = req.headers['x-admin-key'];
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey || typeof adminKey !== 'string' || adminKey !== expectedKey) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
     const profilesSnap = await getDocs(collection(db, 'affiliateProfiles'));
     const profiles: any[] = [];
-    profilesSnap.forEach((d) => profiles.push(d.data()));
+    profilesSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => profiles.push(d.data()));
 
     const ledgerSnap = await getDocs(collection(db, 'commissionLedger'));
     const ledger: any[] = [];
-    ledgerSnap.forEach((d) => ledger.push(d.data()));
+    ledgerSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => ledger.push(d.data()));
 
     const batchesSnap = await getDocs(collection(db, 'payoutBatches'));
     const batches: any[] = [];
-    batchesSnap.forEach((d) => batches.push(d.data()));
+    batchesSnap.forEach((d: FirebaseFirestore.QueryDocumentSnapshot) => batches.push(d.data()));
 
     let totalLiabilityCents = 0;
     let availableObligationsCents = 0;
@@ -1919,7 +2007,7 @@ app.get('/api/admin/affiliates', async (req: Request, res: Response) => {
 app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Response) => {
   try {
     const { adminKey } = req.body;
-    const expectedKey = process.env.ADMIN_KEY || 'tipzeme_admin_secret';
+    const expectedKey = process.env.ADMIN_KEY;
     if (!adminKey || adminKey !== expectedKey) {
       res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
       return;
@@ -1929,7 +2017,7 @@ app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Respo
     const byPartner: Record<string, { totalCents: number; ledgerIds: string[] }> = {};
     const now = Date.now();
 
-    ledgerSnap.forEach((docSnap) => {
+    ledgerSnap.forEach((docSnap: FirebaseFirestore.QueryDocumentSnapshot) => {
       const entry = docSnap.data();
       if (entry.state === 'available' && entry.availableAt <= now) {
         if (!byPartner[entry.affiliateUserId]) {
@@ -1984,16 +2072,23 @@ app.post('/api/admin/affiliates/batch/generate', async (req: Request, res: Respo
 // 6. Admin Payout Batch Approval (with conflict-of-interest prevention)
 app.post('/api/admin/affiliates/batch/approve', async (req: Request, res: Response) => {
   try {
-    const { batchId, adminKey, adminId } = req.body;
-    const expectedKey = process.env.ADMIN_KEY || 'tipzeme_admin_secret';
+    const { batchId, adminKey } = req.body;
+    const expectedKey = process.env.ADMIN_KEY;
     if (!adminKey || adminKey !== expectedKey) {
       res.status(401).json({ error: 'Unauthorized: Invalid admin key' });
       return;
     }
 
+    const adminId = await requireFirebaseUid(req, res);
+    if (!adminId) return;
+    if (typeof batchId !== 'string' || !/^batch_[a-zA-Z0-9_-]+$/.test(batchId)) {
+      res.status(400).json({ error: 'Invalid batch ID' });
+      return;
+    }
+
     const batchRef = doc(db, 'payoutBatches', batchId);
     const batchSnap = await getDoc(batchRef);
-    if (!batchSnap.exists()) {
+    if (!batchSnap.exists) {
       res.status(404).json({ error: 'Payout batch not found' });
       return;
     }
@@ -2144,7 +2239,7 @@ app.get('/:username', async (req: Request, res: Response, next) => {
 
   try {
     const creatorSnap = await getDoc(doc(db, 'creators', username));
-    if (creatorSnap.exists()) {
+    if (creatorSnap.exists) {
       const creator = creatorSnap.data();
       const displayName = creator.displayName || username;
       const bio = creator.bio || 'Create your personal tip link. Share it anywhere. Make every thank-you count.';

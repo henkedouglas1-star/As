@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { UserProfile, TipTransaction } from '../types';
+import { UserProfile } from '../types';
 import { TIP_TIERS, BRAND_NAME, TAGLINE } from '../lib/theme';
 import { validateTipAmount } from '../lib/rules';
 import { getCanonicalProfileUrl } from '../lib/urlUtils';
@@ -78,62 +76,9 @@ export default function PublicTipJarPage({ username, onNavigate }: PublicTipJarP
           return;
         }
 
-        // Direct Firestore fallback
-        const usernameRef = doc(db, 'usernames', normalizedUsername);
-        const usernameDoc = await getDoc(usernameRef);
-
-        if (!usernameDoc.exists()) {
-          // Sample demo 'alex'
-          if (normalizedUsername === 'alex') {
-            setCreator({
-              uid: 'sample_alex',
-              username: 'alex',
-              displayName: 'Alex Morgan',
-              email: 'alex@example.com',
-              bio: 'Creating art, sharing ideas, and making the internet a little more interesting.',
-              supportMessage: 'Enjoy my work? Leave a little tip!',
-              photoURL: undefined,
-              accentColor: '#7427DF',
-              chargesEnabled: true,
-              showTotalTips: true,
-              showSupporters: true,
-              activeGoal: {
-                id: 'goal_sample',
-                title: 'High-Res Audio Interface & Mic',
-                targetAmountDollars: 250,
-                currentAmountDollars: 165,
-                description: 'Upgrading the sound setup for upcoming weekly tutorial live streams.',
-                isActive: true,
-                createdAt: Date.now() - 86400000 * 3,
-              },
-              createdAt: Date.now() - 86400000 * 10,
-            });
-            setLoading(false);
-            return;
-          }
-
-          setNotFound(true);
-          setLoading(false);
-          return;
-        }
-
-        const usernameData = usernameDoc.data();
-        let uid = usernameData.uid;
-
-        if (usernameData.isRedirect && usernameData.redirectTo) {
-          setRedirectNotice(`Redirected from @${normalizedUsername}`);
-          const targetDoc = await getDoc(doc(db, 'usernames', usernameData.redirectTo));
-          if (targetDoc.exists()) {
-            uid = targetDoc.data().uid;
-          }
-        }
-
-        const userDoc = await getDoc(doc(db, 'users', uid));
-        if (userDoc.exists()) {
-          setCreator(userDoc.data() as UserProfile);
-        } else {
-          setNotFound(true);
-        }
+        // Public profiles are served only through the sanitized server endpoint.
+        // Never fall back to reading private creator documents in the browser.
+        setNotFound(true);
       } catch (err) {
         console.warn('Error fetching public jar:', err);
         setNotFound(true);
@@ -211,32 +156,6 @@ export default function PublicTipJarPage({ username, onNavigate }: PublicTipJarP
       if (data.url) {
         // Redirect directly to Stripe Checkout
         window.location.href = data.url;
-        return;
-      }
-
-      // If simulated fallback
-      if (data.success || data.simulated) {
-        const tipRecord: TipTransaction = {
-          id: data.tipId || 'tip_' + Date.now(),
-          recipientId: creator.uid,
-          recipientUsername: creator.username,
-          amountCents: Math.round(numericAmount * 100),
-          currency: 'usd',
-          supporterName: supporterName.trim() || 'Anonymous',
-          message: message.trim(),
-          status: 'succeeded',
-          createdAt: Date.now(),
-        };
-
-        try {
-          await setDoc(doc(db, 'tips', tipRecord.id), tipRecord);
-        } catch (e) {
-          console.warn('Tip store warning:', e);
-        }
-
-        onNavigate(
-          `success?creator=${encodeURIComponent(creator.displayName || creator.username)}&handle=${creator.username}&amount=${numericAmount.toFixed(2)}`
-        );
         return;
       }
 
